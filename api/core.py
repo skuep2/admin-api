@@ -3,11 +3,7 @@
 # SPDX-FileCopyrightText: 2020 grommunio GmbH
 
 from flask import Flask, jsonify, request, make_response
-
-import yaml
-from sqlalchemy.exc import DatabaseError
 from functools import wraps
-import traceback
 
 from orm import DB
 from tools.config import Config
@@ -122,16 +118,7 @@ def secure(requireDB=False, requireAuth=True, authLevel="basic"):
                     return jsonify(message="Database not available."), 503
                 if DB.requireReload():
                     reloadORM()
-            try:
-                return call()
-            except DatabaseError as err:
-                API.logger.error("Database query failed: {}".format(err))
-                return jsonify(message="Database error."), 503
-            except InsufficientPermissions as err:
-                return jsonify(message="Insufficient permissions for this operation"), 403
-            except:
-                API.logger.error(traceback.format_exc())
-                return jsonify(message="The server encountered an error while processing the request."), 500
+            return call()
         return wrapper
     return inner
 
