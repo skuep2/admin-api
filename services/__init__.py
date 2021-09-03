@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2021 grommunio GmbH
 
 
-class ServiceUnavailableException(Exception):
+class ServiceUnavailableError(Exception):
     pass
 
 
@@ -26,10 +26,6 @@ class ServiceHub(metaclass=_ServiceHubMeta):
     UNAVAILABLE = 1     # Temporarily unavailable, might become available automatically
     SUSPENDED = 2       # Unavailable but might be restarted manually
     ERROR = 3           # Fatal error
-
-    SUPPRESS_NONE = 0   # All exceptions are passed to the calling function
-    SUPPRESS_INOP = 1   # Suppress exceptions indicating service unavailability
-    SUPPRESS_ALL = 2    # Suppress all exceptions
 
     class ServiceInfo:
         def __init__(self, name, mgrclass, exchandler):
@@ -80,7 +76,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
     @classmethod
     def get(cls, name):
         if name not in cls._services:
-            raise ServiceUnavailableException("Service '{}' does not exist.".format(name))
+            raise ServiceUnavailableError("Service '{}' does not exist.".format(name))
         service = cls._services[name]
         service.load()
         return service
@@ -97,21 +93,23 @@ class ServiceHub(metaclass=_ServiceHubMeta):
 
 
 class Service:
-    SUPPRESS_NONE = ServiceHub.SUPPRESS_NONE
-    SUPPRESS_INOP = ServiceHub.SUPPRESS_INOP
-    SUPPRESS_ALL = ServiceHub.SUPPRESS_ALL
+    SUPPRESS_NONE = 0   # All exceptions are passed to the calling function
+    SUPPRESS_INOP = 1   # Suppress exceptions indicating service unavailability
+    SUPPRESS_ALL = 2    # Suppress all exceptions
 
     class Stub:
         def __init__(self, name):
             self.name = name
 
         def __getattr__(self, name):
-            raise ServiceUnavailableException("Service '{}' is currently not available".format(self.name))
+            raise ServiceUnavailableError("Service '{}' is currently not available".format(self.name))
 
-    def __init__(self, name, suppress=SUPPRESS_NONE):
+    def __init__(self, name, suppress=0):
         try:
+            self.suppressed = None
             self.__suppress = suppress
             self.__service = ServiceHub[name]
+            self.plugin = self.__service.mgrclass
             self.__mgr = self.Stub(name) if not self.__service.available else self.__service.manager
         except Exception:
             if suppress == self.SUPPRESS_ALL:
@@ -126,16 +124,24 @@ class Service:
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is None:
             return
-        newstate = self.__service.exchandler(self.__service, exc_value)
+        self.suppressed = exc_value
+        excresult = self.__service.exchandler(self.__service, exc_value)
+        if isinstance(excresult, tuple):
+            newstate, msg = excresult
+        else:
+            newstate, msg = excresult, "Service '{}' is currently not available".format(self.__service.name)
         if newstate is not None:
             self.__service.state = newstate
             if self.__suppress:
                 return True
-            raise ServiceUnavailableException("Service '{}' is currently not available".format(self.__service.name))
-        if (isinstance(exc_value, ServiceUnavailableException) and self.__suppress == self.SUPPRESS_INOP) or\
+            raise ServiceUnavailableError(msg)
+        if (isinstance(exc_value, ServiceUnavailableError) and self.__suppress == self.SUPPRESS_INOP) or\
            self.__suppress == ServiceHub.SUPPRESS_ALL:
             return True
 
     @staticmethod
     def available(name):
         return name in ServiceHub and ServiceHub[name].available
+
+
+from . import exmdb

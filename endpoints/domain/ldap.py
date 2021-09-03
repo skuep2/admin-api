@@ -11,16 +11,16 @@ import api
 from api.core import API, secure
 from api.security import checkPermissions
 
+from services import Service
+
 from tools import ldap
-from tools.config import Config
-from tools.constants import ExmdbCodes
 from tools.DataModel import InvalidAttributeError, MismatchROError
 from tools.permissions import SystemAdminPermission, DomainAdminPermission, DomainAdminROPermission
-from tools.pyexmdb import pyexmdb
 from tools.storage import UserSetup
 from tools.systemd2 import Systemd
 
 from orm import DB
+
 
 @API.route(api.BaseRoute+"/domains/ldap/search", methods=["GET"])
 @secure(requireDB=True, authLevel="user")
@@ -75,7 +75,7 @@ def ldapDownsyncDomains(domains):
             API.logger.error(traceback.format_exc())
             syncStatus.append({"ID": user.ID, "username": user.username, "code": 500, "message": "Synchronization error"})
             DB.session.rollback()
-        except:
+        except Exception:
             API.logger.error(traceback.format_exc())
             syncStatus.append({"ID": user.ID, "username": user.username, "code": 503, "message": "Database error"})
             DB.session.rollback()
@@ -113,7 +113,7 @@ def ldapDownsyncDomains(domains):
                     continue
                 DB.session.commit()
                 syncStatus.append({"ID": user.ID, "username": user.username, "code": 201, "message": "User created"})
-            except:
+            except Exception:
                 API.logger.error(traceback.format_exc())
                 DB.session.rollback()
                 syncStatus.append({"username": candidate.email, "code": 503, "message": "Database error"})
@@ -168,7 +168,7 @@ def downloadLdapUser():
            Users.query.filter(Users.username == userinfo.email).first()
     if user is not None:
         if user.externID != ID and not force == "true":
-            return jsonify(message="Cannot import user: User exists "+
+            return jsonify(message="Cannot import user: User exists " +
                            ("locally" if user.externID is None else "and is associated with another LDAP object")), 409
         checkPermissions(DomainAdminPermission(user.domainID))
         userdata = ldap.downsyncUser(ID, user.propmap)
@@ -247,15 +247,11 @@ def checkLdapUsers():
     if request.method == "GET":
         return jsonify(orphaned=orphanedData)
     deleteMaildirs = request.args.get("deleteFiles") == "true"
-    try:
-        options = Config["options"]
-        client = pyexmdb.ExmdbQueries(options["exmdbHost"], options["exmdbPort"], options["domainPrefix"], True)
-        for user in orphaned:
-            client.unloadStore(user.maildir)
-    except pyexmdb.ExmdbError as err:
-        API.logger.error("Could not unload exmdb store: "+ExmdbCodes.lookup(err.code, hex(err.code)))
-    except RuntimeError as err:
-        API.logger.error("Could not unload exmdb store: "+err.args[0])
+    if len(orphaned):
+        with Service("exmdb", Service.SUPPRESS_INOP) as exmdb:
+            client = exmdb.ExmdbQueries(exmdb.host, exmdb.port, orphaned[0].maildir, True)
+            for user in orphaned:
+                client.unloadStore(user.maildir)
     if deleteMaildirs:
         for user in orphaned:
             shutil.rmtree(user.maildir, ignore_errors=True)

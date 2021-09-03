@@ -297,19 +297,13 @@ def cliLdapCheck(args):
         cli.print("\t"+user.username)
     if args.remove:
         if args.yes or cli.confirm("Delete all orphaned users? [y/N]: ") == Cli.SUCCESS:
-            from tools.config import Config
-            from tools.constants import ExmdbCodes
-            from tools.pyexmdb import pyexmdb
+            from services import Service
             cli.print("Unloading exmdb stores...")
-            try:
-                options = Config["options"]
-                client = pyexmdb.ExmdbQueries(options["exmdbHost"], options["exmdbPort"], options["userPrefix"], True)
-                for user in orphaned:
-                    client.unloadStore(user.maildir)
-            except pyexmdb.ExmdbError as err:
-                cli.print(cli.col("Could not unload exmdb store: "+ExmdbCodes.lookup(err.code, hex(err.code)), "yellow"))
-            except RuntimeError as err:
-                cli.print(cli.col("Could not unload exmdb store: "+err.args[0], "yellow"))
+            if len(orphaned):
+                with Service("exmdb", Service.SUPPRESS_INOP) as exmdb:
+                    client = exmdb.ExmdbQueries(exmdb.host, exmdb.port, orphaned[0].maildir, True)
+                    for user in orphaned:
+                        client.unloadStore(user.maildir)
             if args.remove_maildirs:
                 import shutil
                 cli.print("Removing mail directories...")
