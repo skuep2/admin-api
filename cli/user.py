@@ -27,7 +27,6 @@ def _mkStatus(cli, status):
 
 def _dumpUser(cli, user, indent=0):
     from ldap3.utils.conv import escape_filter_chars
-    import tools.chat  # Prevent output interruptions when loading this module
     for attr in ("ID", "username", "domainID", "maildir", "privilegeBits"):
         v = getattr(user, attr, None)
         cli.print("{}{}: {}".format(" "*indent, attr, v if v is not None else ""))

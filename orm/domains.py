@@ -6,6 +6,7 @@ from . import DB, OptionalC, NotifyTable
 from tools import formats
 from tools.DataModel import DataModel, Id, Text, Int, Date
 from tools.DataModel import InvalidAttributeError, MismatchROError, MissingRequiredAttributeError
+from services import Service
 
 import idna
 import json
@@ -121,34 +122,27 @@ class Domains(DataModel, DB.Base, NotifyTable):
         if not self.chatID:
             return False
         if self._team is None:
-            from tools import chat
-            self._team = chat.getTeam(self.chatID)
+            with Service("chat", Service.SUPPRESS_ALL) as grochat:
+                self._team = grochat.getTeam(self.chatID)
         return self._team["delete_at"] == 0 if self._team else False
 
     @chat.setter
     def chat(self, value):
         if value == self.chat or not DB.minVersion(79):
             return
-        from tools import chat
-        import logging
-        if isinstance(value, str):
-            tmp = chat.getTeam(value)
-            if tmp is None:
-                logging.warning("Team not found")
-            self.chatID = value
-            self._team = tmp
-        if self._team:
-            tmp = chat.activateTeam(self, value)
-            if tmp:
-                self._team["delete_at"] = not value
-            err = "Failed to "+("" if value else "de")+"activate team"
-        else:
-            tmp = chat.createTeam(self)
-            if tmp:
+        with Service("chat") as chat:
+            if isinstance(value, str):
+                tmp = chat.getTeam(value)
+                self.chatID = value
                 self._team = tmp
-            err = "Failed to create team"
-        if not tmp:
-            logging.warning(err)
+            if self._team:
+                tmp = chat.activateTeam(self, value)
+                if tmp:
+                    self._team["delete_at"] = not value
+            else:
+                tmp = chat.createTeam(self)
+                if tmp:
+                    self._team = tmp
 
     @property
     def displayname(self):
