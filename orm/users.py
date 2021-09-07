@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2020-2021 grommunio GmbH
 
 from . import DB, OptionalC, OptionalNC, NotifyTable
+from services import Service
 from tools import formats
 from tools.constants import PropTags, PropTypes
 from tools.DataModel import DataModel, Id, Text, Int, BoolP, RefProp, Bool, Date
@@ -363,17 +364,8 @@ class Users(DataModel, DB.Base, NotifyTable):
     @validates("_syncPolicy")
     def triggerSyncPolicyUpdate(self, key, value, *args):
         if value != self._syncPolicy:
-            try:
-                from redis import Redis
-                from tools.config import Config
-                sync = Config["sync"]
-                r = Redis(sync.get("host", "localhost"), sync.get("port", 6379), sync.get("db", 0), sync.get("password"),
-                          decode_responses=True)
+            with Service("redis", Service.SUPPRESS_INOP) as r:
                 r.delete("grommunio-sync:policycache-"+self.username)
-            except Exception as err:
-                import logging
-                logging.warning("Failed to invalidate sync policy cache for user '{}': {} ({})"
-                                .format(self.username, type(err).__name__, " - ".join(str(arg) for arg in err.args)))
         return value
 
     @staticmethod

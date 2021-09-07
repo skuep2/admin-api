@@ -15,7 +15,7 @@ class _ServiceHubMeta(type):
         return iter(cls._services.values())
 
     def __getitem__(cls, item):
-        return cls.get(item)
+        return cls._services[item]
 
 
 class ServiceHub(metaclass=_ServiceHubMeta):
@@ -28,7 +28,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
     ERROR = 3           # Fatal error
 
     class ServiceInfo:
-        def __init__(self, name, mgrclass, exchandler, maxreloads):
+        def __init__(self, name, mgrclass, exchandler, maxreloads, maxfailures):
             self.mgrclass = mgrclass
             self.state = ServiceHub.UNINITIALIZED
             self.exc = None
@@ -37,10 +37,20 @@ class ServiceHub(metaclass=_ServiceHubMeta):
             self.manager = None
             self._reloads = 0
             self._maxreloads = maxreloads
+            self._failures = 0
+            self._maxfailures = maxfailures
 
         def __str__(self):
             statename = {-1: "UNINITIALIZED", 0: "LOADED", 1: "UNAVAILABLE", 2: "SUSPENDED", 3: "ERROR"}
             return "<Service '{}' state {}>".format(self._name, statename.get(self._state))
+
+        def failed(self, newstate):
+            self._failures += 1
+            if self._maxfailures is not None  and self._failures > self._maxfailures:
+                self.state = ServiceHub.ERROR
+                return False
+            self.state = newstate
+            return True
 
         def load(self, force_reload=False):
             if self._state not in (ServiceHub.UNINITIALIZED, ServiceHub.SUSPENDED) and not force_reload:
@@ -53,7 +63,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
                 return
             except ServiceUnavailableError as err:
                 self.exc = err
-                self._state = ServiceHub.SUSPENDED if self._reloads < self._maxreloads else ServiceHub.ERROR
+                self._state = ServiceHub.SUSPENDED if self._reloads <= self._maxreloads else ServiceHub.ERROR
             except Exception as err:
                 self.exc = err
                 self._state = ServiceHub.ERROR
@@ -62,6 +72,10 @@ class ServiceHub(metaclass=_ServiceHubMeta):
         @property
         def available(self):
             return self.state not in (ServiceHub.SUSPENDED, ServiceHub.ERROR)
+
+        @property
+        def failures(self):
+            return self._failures
 
         @property
         def name(self):
@@ -80,9 +94,9 @@ class ServiceHub(metaclass=_ServiceHubMeta):
             self._state = value if value in range(-1, 4) else ServiceHub.ERROR
 
     @classmethod
-    def register(cls, name, exchandler=lambda *args, **kwargs: None, maxreloads=0):
+    def register(cls, name, exchandler=lambda *args, **kwargs: None, maxreloads=0, maxfailures=None):
         def inner(mgrclass):
-            cls._services[name] = cls.ServiceInfo(name, mgrclass, exchandler, maxreloads)
+            cls._services[name] = cls.ServiceInfo(name, mgrclass, exchandler, maxreloads, maxfailures)
             return mgrclass
         return inner
 
@@ -119,9 +133,8 @@ class Service:
 
     def __init__(self, name, suppress=0):
         try:
-            self.suppressed = None
             self.__suppress = suppress
-            self.__service = ServiceHub[name]
+            self.__service = ServiceHub.get(name)
             self.plugin = self.__service.mgrclass
             self.__mgr = self.Stub(name) if not self.__service.available else self.__service.manager
         except Exception:
@@ -135,21 +148,19 @@ class Service:
         return self.__mgr
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type is None:
-            return
-        self.suppressed = exc_value
+        if exc_type is None or isinstance(exc_value, ServiceUnavailableError):
+            return self.__suppress != 0
         excresult = self.__service.exchandler(self.__service, exc_value)
         if isinstance(excresult, tuple):
             newstate, msg = excresult
         else:
             newstate, msg = excresult, "Service '{}' is currently not available".format(self.__service.name)
         if newstate is not None:
-            self.__service.state = newstate
+            self.__service.failed(newstate)
             if self.__suppress:
                 return True
             raise ServiceUnavailableError(msg)
-        if (isinstance(exc_value, ServiceUnavailableError) and self.__suppress == self.SUPPRESS_INOP) or\
-           self.__suppress == Service.SUPPRESS_ALL:
+        if self.__suppress == Service.SUPPRESS_ALL:
             return True
 
     @staticmethod
@@ -157,4 +168,4 @@ class Service:
         return name in ServiceHub and ServiceHub[name].available
 
 
-from . import chat, exmdb
+from . import chat, exmdb, redis
