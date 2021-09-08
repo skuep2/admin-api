@@ -17,7 +17,6 @@ from tools import ldap
 from tools.DataModel import InvalidAttributeError, MismatchROError
 from tools.permissions import SystemAdminPermission, DomainAdminPermission, DomainAdminROPermission
 from tools.storage import UserSetup
-from tools.systemd2 import Systemd
 
 from orm import DB
 
@@ -194,9 +193,8 @@ def downloadLdapUser():
     if not us.success:
         return jsonify(message="Error during user setup", error=us.error), us.errorCode
     DB.session.commit()
-    _, msg = Systemd(system=True).reloadService("gromox-http.service")
-    if msg:
-        API.logger.warn("Failed to reload gromox-http.service: "+msg)
+    with Service("systemd", Service.SUPPRESS_ALL) as sysd:
+        sysd.reloadService("gromox-http.service")
     return jsonify(user.fulldesc()), 201
 
 

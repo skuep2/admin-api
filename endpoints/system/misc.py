@@ -13,7 +13,6 @@ from services import Service
 from tools.config import Config
 from tools.license import getLicense, updateCertificate
 from tools.permissions import SystemAdminPermission, SystemAdminROPermission
-from tools.systemd2 import Systemd
 
 import json
 import os
@@ -66,12 +65,13 @@ def getDashboardServices():
     known = Config["options"]["dashboard"]["services"]
     if len(known) == 0:
         return jsonify(services=[])
-    units = Systemd(system=True).getServices(*(service["unit"] for service in known))
-    for service in known:
-        if service["unit"] not in units:
-            continue
-        units[service["unit"]]["name"] = service.get("name", service["unit"].replace(".service", ""))
-    return jsonify(services=list(units.values()))
+    with Service("systemd") as sysd:
+        units = sysd.getServices(*(service["unit"] for service in known))
+        for service in known:
+            if service["unit"] not in units:
+                continue
+            units[service["unit"]]["name"] = service.get("name", service["unit"].replace(".service", ""))
+        return jsonify(services=list(units.values()))
 
 
 @API.route(api.BaseRoute+"/system/dashboard/services/<unit>", methods=["GET"])
@@ -83,10 +83,11 @@ def getDashboardService(unit):
             break
     else:
         return jsonify(message="Unknown unit '{}'".format(unit)), 400
-    unit = Systemd(system=True).getServices(service["unit"])[service["unit"]]
-    unit["name"] = service.get("name", service["unit"].replace(".service", ""))
-    unit["unit"] = service["unit"]
-    return jsonify(unit)
+    with Service("systemd") as sysd:
+        unit = sysd.getServices(service["unit"])[service["unit"]]
+        unit["name"] = service.get("name", service["unit"].replace(".service", ""))
+        unit["unit"] = service["unit"]
+        return jsonify(unit)
 
 
 @API.route(api.BaseRoute+"/system/dashboard/services/<unit>/<action>", methods=["POST"])
@@ -97,8 +98,9 @@ def signalDashboardService(unit, action):
         return jsonify(message="Invalid action"), 400
     if unit not in (service["unit"] for service in Config["options"]["dashboard"]["services"]):
         return jsonify(message="Unknown unit '{}'".format(unit)), 400
-    _, msg = Systemd(system=True).run(action, unit)
-    return jsonify(message=msg or "Success"), 500 if msg else 201
+    with Service("systemd") as sysd:
+        _, msg = sysd.run(action, unit)
+        return jsonify(message=msg or "Success"), 500 if msg else 201
 
 
 def dumpLicense():

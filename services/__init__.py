@@ -136,7 +136,7 @@ class Service:
             self.__suppress = suppress
             self.__service = ServiceHub.get(name)
             self.plugin = self.__service.mgrclass
-            self.__mgr = self.Stub(name) if not self.__service.available else self.__service.manager
+            self.__mgr = self.__service.manager if self.__service.available else self.Stub(name)
         except Exception:
             if suppress == self.SUPPRESS_ALL:
                 self.__service = None
@@ -168,4 +168,4 @@ class Service:
         return name in ServiceHub and ServiceHub[name].available
 
 
-from . import chat, exmdb, redis
+from . import chat, exmdb, redis, systemd

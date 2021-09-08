@@ -61,11 +61,9 @@ def _getl(cli, prompt="", defaults=[]):
 
 
 def _reloadGromoxHttp(cli):
-    from tools.systemd2 import Systemd
-    sysd = Systemd(system=True)
-    _, msg = sysd.reloadService("gromox-http.service")
-    if msg:
-        cli.print(cli.col("Failed to reload gromox-http: "+msg, "yellow"))
+    from services import Service
+    with Service("systemd", Service.SUPPRESS_ALL) as sysd:
+        sysd.reloadService("gromox-http.service")
 
 
 def cliLdapInfo(args):

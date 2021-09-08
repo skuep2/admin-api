@@ -9,11 +9,11 @@ import logging
 
 from .config import Config
 from .misc import setDirectoryOwner, setDirectoryPermission
-from .systemd2 import Systemd
+from services import Service
+
 
 LDAP = {}
 AUTHMGR = {}
-
 
 _ldapDepServices = ("gromox-http.service", "gromox-midb.service", "gromox-zcore.service", "gromox-delivery.service",
                     "gromox-delivery-queue.service", "gromox-imap.service", "gromox-pop3.service")
@@ -57,11 +57,8 @@ def _addIfDef(dc, d, sc, s, all=False, type=None):
 
 
 def _reloadServices(*services):
-    for service in services:
-        _, msg = Systemd(system=True).tryReloadRestartService(service)
-        if msg:
-            logging.warn("Failed to reload/restart '{}': {}".format(service, msg))
-
+    with Service("systemd", Service.SUPPRESS_ALL) as sysd:
+        sysd.tryReloadRestartService(*services)
 
 ###############################################################################
 
