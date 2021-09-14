@@ -274,13 +274,13 @@ class Users(DataModel, DB.Base, NotifyTable):
 
     @property
     def ldapID(self):
-        from tools.ldap import escape_filter_chars
-        return None if self.externID is None else escape_filter_chars(self.externID)
+        from services.ldap import LdapService
+        return None if self.externID is None else LdapService.escape_filter_chars(self.externID)
 
     @ldapID.setter
     def ldapID(self, value):
-        from tools.ldap import unescapeFilterChars
-        self.externID = None if value is None else unescapeFilterChars(value)
+        from services.ldap import LdapService
+        self.externID = None if value is None else LdapService.unescapeFilterChars(value)
 
     @hybrid_property
     def status(self):

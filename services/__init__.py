@@ -4,6 +4,24 @@
 
 
 class ServiceUnavailableError(Exception):
+    """Service not available.
+
+    Thrown to indicate that the service is not available,
+    either because initialization failed or an error occured
+    that is typically caused by the external service being unreachable
+    (in contrast to errors caused by e.g. faulty data).
+
+    When thrown in a service constructor to indicate that reloading
+    at a later time may resolve the issue
+    (putting the service in SUSPENDED state)."""
+    pass
+
+class ServiceDisabledError(Exception):
+    """Service is manually disabled.
+
+    Should be thorwn in service constructor to indicate
+    that the service is theoretically available,
+    but was disabled manually and can be reactivated later."""
     pass
 
 
@@ -26,6 +44,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
     UNAVAILABLE = 1     # Temporarily unavailable, might become available automatically
     SUSPENDED = 2       # Needs to be reloaded in order to work
     ERROR = 3           # Fatal error
+    DISABLED = 4        # Ok, but disabled manually
 
     class ServiceInfo:
         def __init__(self, name, mgrclass, exchandler, maxreloads, maxfailures):
@@ -71,7 +90,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
 
         @property
         def available(self):
-            return self.state not in (ServiceHub.SUSPENDED, ServiceHub.ERROR)
+            return self.state not in (ServiceHub.SUSPENDED, ServiceHub.ERROR, ServiceHub.DISABLED)
 
         @property
         def failures(self):
@@ -91,7 +110,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
 
         @state.setter
         def state(self, value):
-            self._state = value if value in range(-1, 4) else ServiceHub.ERROR
+            self._state = value if ServiceHub.UNINITIALIZED <= value <= ServiceHub.DISABLED else ServiceHub.ERROR
 
     @classmethod
     def register(cls, name, exchandler=lambda *args, **kwargs: None, maxreloads=0, maxfailures=None):
@@ -167,5 +186,4 @@ class Service:
     def available(name):
         return name in ServiceHub and ServiceHub[name].available
 
-
-from . import chat, exmdb, redis, systemd
+from . import chat, exmdb, ldap, redis, systemd

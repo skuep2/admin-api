@@ -6,8 +6,10 @@ import argcomplete
 import logging
 from argparse import ArgumentParser, _SubParsersAction
 
+
 class CliError(BaseException):
     pass
+
 
 class Cli:
     class Formatter(logging.Formatter):
@@ -80,7 +82,7 @@ class Cli:
             if kwargs.get("color", False) or self.stdout.isatty():
                 self.col = lambda *args, **kwargs: termcolor.colored(*args, **kwargs)
                 self.colored = True
-        except:
+        except Exception:
             pass
         self.fs = None
         if "fs" in kwargs and isinstance(kwargs["fs"], dict):
@@ -270,8 +272,8 @@ class Cli:
             if err is not None:
                 raise CliError(err)
         if "LDAP" in args:
-            from tools.ldap import LDAP_available
-            if not LDAP_available:
+            from services import ServiceHub
+            if not ServiceHub.get("ldap").available:
                 raise CliError("LDAP not available")
 
     def input(self, prompt="", secret=False):
