@@ -63,10 +63,16 @@ class ServiceHub(metaclass=_ServiceHubMeta):
             statename = {-1: "UNINITIALIZED", 0: "LOADED", 1: "UNAVAILABLE", 2: "SUSPENDED", 3: "ERROR"}
             return "<Service '{}' state {}>".format(self._name, statename.get(self._state))
 
-        def failed(self, newstate):
+        def disable(self):
+            self.state = ServiceHub.DISABLED
+            self.exc = ServiceDisabledError("Service disabled manually")
+
+        def failed(self, newstate, exception):
             self._failures += 1
+            self.exc = exception
             if self._maxfailures is not None  and self._failures > self._maxfailures:
                 self.state = ServiceHub.ERROR
+                self._failures = self._maxfailures
                 return False
             self.state = newstate
             return True
@@ -83,6 +89,10 @@ class ServiceHub(metaclass=_ServiceHubMeta):
             except ServiceUnavailableError as err:
                 self.exc = err
                 self._state = ServiceHub.SUSPENDED if self._reloads <= self._maxreloads else ServiceHub.ERROR
+                self._reloads = min(self._reloads, self._maxreloads)
+            except ServiceDisabledError as err:
+                self.exc = err
+                self._state = ServiceHub.DISABLED
             except Exception as err:
                 self.exc = err
                 self._state = ServiceHub.ERROR
@@ -95,6 +105,14 @@ class ServiceHub(metaclass=_ServiceHubMeta):
         @property
         def failures(self):
             return self._failures
+
+        @property
+        def maxfailures(self):
+            return self._maxfailures
+
+        @property
+        def maxreloads(self):
+            return self._maxreloads
 
         @property
         def name(self):
@@ -175,7 +193,7 @@ class Service:
         else:
             newstate, msg = excresult, "Service '{}' is currently not available".format(self.__service.name)
         if newstate is not None:
-            self.__service.failed(newstate)
+            self.__service.failed(newstate, exc_value)
             if self.__suppress:
                 return True
             raise ServiceUnavailableError(msg)

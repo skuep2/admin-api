@@ -74,9 +74,9 @@ def _cliMconfSave(args):
     from tools import mconf
     try:
         if args.config == "authmgr":
-            error = mconf.dumpAuthmgr(file=cli.open("mconf.authmgrPath", "w", True))
+            error = mconf.dumpAuthmgr(file=cli.open("mconf.authmgrPath", "w", cli.fs is None))
         elif args.config == "ldap":
-            error = mconf.dumpLdap(file=cli.open("mconf.ldapPath", "w", True))
+            error = mconf.dumpLdap(file=cli.open("mconf.ldapPath", "w", cli.fs is None))
         else:
             cli.print(cli.col("Unknown config '{}'".format(args.config), "red"))
             return 1

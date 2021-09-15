@@ -19,7 +19,7 @@ def handleGrochatExceptions(service, error):
         raise ValueError("grochat: invalid data")
 
 
-@ServiceHub.register("chat", handleGrochatExceptions, maxreloads=5)
+@ServiceHub.register("chat", handleGrochatExceptions, maxreloads=3)
 class GrochatService:
     def __init__(self):
         from tools.config import Config

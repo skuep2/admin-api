@@ -19,7 +19,7 @@ def handleLdapError(service, error):
         return ServiceHub.SUSPENDED
 
 
-@ServiceHub.register("ldap", handleLdapError, maxreloads=5)
+@ServiceHub.register("ldap", handleLdapError, maxreloads=3)
 class LdapService:
     __initialized = False
     _templates = {}
@@ -29,6 +29,7 @@ class LdapService:
     def init(cls):
         if cls.__initialized:
             return
+        ldap3.set_config_parameter("POOLING_LOOP_TIMEOUT", 1)
         try:
             with open("res/ldapTemplates.yaml") as file:
                 cls._templates = yaml.load(file, Loader=yaml.SafeLoader)
@@ -158,7 +159,6 @@ class LdapService:
         str
             A string including all search filters.
         """
-        import logging
         username = userconf["username"]
         filterexpr = "".join("("+f+")" for f in userconf.get("filters", ()))
         domainexpr = "(|{})".format("".join("({}=*@{})".format(username, d) for d in domains)) if domains is not None else ""

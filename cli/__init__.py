@@ -455,4 +455,4 @@ class Cli:
         return completions
 
 
-from . import config, dbconf, dbtools, domain, fetchmail, fs, ldap, mconf, misc, mlist, remote, user
+from . import config, dbconf, dbtools, domain, fetchmail, fs, ldap, mconf, misc, mlist, remote, services, user

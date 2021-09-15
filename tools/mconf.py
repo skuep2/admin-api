@@ -150,10 +150,10 @@ def dumpLdap(conf=None, file=None, reloadServices=True):
             LDAP = conf
         if file is None:
             _dumpConf(Config["mconf"]["ldapPath"], _flattenLdap(LDAP))
-            if reloadServices:
-                _reloadServices(*_ldapDepServices)
         else:
             _fDumpConf(file, _flattenLdap(LDAP))
+        if reloadServices:
+            _reloadServices(*_ldapDepServices)
     except Exception as err:
         return " - ".join((str(arg) for arg in err.args))
 
