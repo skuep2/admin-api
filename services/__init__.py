@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2021 grommunio GmbH
 
+import logging
+
 
 class ServiceUnavailableError(Exception):
     """Service not available.
@@ -16,10 +18,11 @@ class ServiceUnavailableError(Exception):
     (putting the service in SUSPENDED state)."""
     pass
 
+
 class ServiceDisabledError(Exception):
     """Service is manually disabled.
 
-    Should be thorwn in service constructor to indicate
+    Should be thrown in service constructor to indicate
     that the service is theoretically available,
     but was disabled manually and can be reactivated later."""
     pass
@@ -46,10 +49,17 @@ class ServiceHub(metaclass=_ServiceHubMeta):
     ERROR = 3           # Fatal error
     DISABLED = 4        # Ok, but disabled manually
 
+    _names = {UNINITIALIZED: "UNLOADED",
+              LOADED: "LOADED",
+              UNAVAILABLE: "UNAVAILABLE",
+              SUSPENDED: "SUSPENDED",
+              ERROR: "ERROR",
+              DISABLED: "DISABLED"}
+
     class ServiceInfo:
         def __init__(self, name, mgrclass, exchandler, maxreloads, maxfailures):
             self.mgrclass = mgrclass
-            self.state = ServiceHub.UNINITIALIZED
+            self._state = ServiceHub.UNINITIALIZED
             self.exc = None
             self._name = name
             self.exchandler = exchandler
@@ -58,6 +68,7 @@ class ServiceHub(metaclass=_ServiceHubMeta):
             self._maxreloads = maxreloads
             self._failures = 0
             self._maxfailures = maxfailures
+            self.logger = logging.getLogger(name)
 
         def __str__(self):
             statename = {-1: "UNINITIALIZED", 0: "LOADED", 1: "UNAVAILABLE", 2: "SUSPENDED", 3: "ERROR"}
@@ -70,32 +81,37 @@ class ServiceHub(metaclass=_ServiceHubMeta):
         def failed(self, newstate, exception):
             self._failures += 1
             self.exc = exception
-            if self._maxfailures is not None  and self._failures > self._maxfailures:
+            if self._maxfailures is not None and self._failures > self._maxfailures:
                 self.state = ServiceHub.ERROR
                 self._failures = self._maxfailures
+                self.logger.info("Service deactivated after too many errors")
                 return False
             self.state = newstate
             return True
 
         def load(self, force_reload=False):
             if self._state not in (ServiceHub.UNINITIALIZED, ServiceHub.SUSPENDED) and not force_reload:
-                    return
+                return
             self._reloads += 1
             try:
                 self.manager = self.mgrclass()
-                self._state = ServiceHub.LOADED
+                self.state = ServiceHub.LOADED
                 self._reloads = 0
+                self.logger.info("Service loaded successfully")
                 return
             except ServiceUnavailableError as err:
                 self.exc = err
-                self._state = ServiceHub.SUSPENDED if self._reloads <= self._maxreloads else ServiceHub.ERROR
+                self.logger.warning("Failed to load service: "+err.args[0])
                 self._reloads = min(self._reloads, self._maxreloads)
+                self.state = ServiceHub.SUSPENDED if self._reloads <= self._maxreloads else ServiceHub.ERROR
             except ServiceDisabledError as err:
                 self.exc = err
-                self._state = ServiceHub.DISABLED
+                self.logger.warning("Failed to load service: "+err.args[0])
+                self.state = ServiceHub.DISABLED
             except Exception as err:
                 self.exc = err
-                self._state = ServiceHub.ERROR
+                self.logger.error("Failed to load service: "+" - ".join(str(arg) for arg in err.args))
+                self.state = ServiceHub.ERROR
             self.manager = None
 
         @property
@@ -128,7 +144,14 @@ class ServiceHub(metaclass=_ServiceHubMeta):
 
         @state.setter
         def state(self, value):
-            self._state = value if ServiceHub.UNINITIALIZED <= value <= ServiceHub.DISABLED else ServiceHub.ERROR
+            newstate = value if ServiceHub.UNINITIALIZED <= value <= ServiceHub.DISABLED else ServiceHub.ERROR
+            if newstate != self._state:
+                self.logger.debug("State changed {} -> {}".format(self.statename, ServiceHub.statename(newstate)))
+            self._state = newstate
+
+        @property
+        def statename(self):
+            return ServiceHub.statename(self._state)
 
     @classmethod
     def register(cls, name, exchandler=lambda *args, **kwargs: None, maxreloads=0, maxfailures=None):
@@ -154,6 +177,10 @@ class ServiceHub(metaclass=_ServiceHubMeta):
         else:
             for service in cls._services.values():
                 service.load()
+
+    @classmethod
+    def statename(cls, state):
+        return cls._names.get(state, "UNKNOWN")
 
 
 class Service:

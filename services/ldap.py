@@ -12,6 +12,9 @@ import yaml
 from ldap3.utils.conv import escape_filter_chars
 from tools.misc import GenericObject
 
+import logging
+logger = logging.getLogger("ldap")
+
 
 def handleLdapError(service, error):
     if isinstance(error,
@@ -383,7 +386,7 @@ class LdapService:
         pool = ldap3.ServerPool(servers, "FIRST", active=1)
         conn = ldap3.Connection(pool, user=config["connection"].get("bindUser"), password=config["connection"].get("bindPass"))
         if config["connection"].get("starttls") and not conn.start_tls():
-            pass  # TODO: add logging
+            logger.warning("Failed to initiate StartTLS connection")
         if not conn.bind():
             raise ldapexc.LDAPBindError("LDAP bind failed ({}): {}".format(conn.result["description"], conn.result["message"]))
         if active:

@@ -13,17 +13,17 @@ class CliError(BaseException):
 
 class Cli:
     class Formatter(logging.Formatter):
-        levelcolors = {"WARNING": "yellow", "ERROR": "red", "CRITICAL": "red"}
+        levelstyles = {"DEBUG": {"attrs": ["dark"]},
+                       "WARNING": {"color": "yellow"},
+                       "ERROR": {"color": "red"},
+                       "CRITICAL": {"color": "red", "attrs": ["bold"]}}
 
-        def __init__(self, format, cli):
+        def __init__(self, format, col):
             super().__init__(format)
-            self.cli = cli
+            self.__col = col
 
         def format(self, record):
-            if self.cli.colored:
-                record.msg = self.cli.col(record.msg, self.levelcolors.get(record.levelname, "white"))
-            else:
-                record.msg = "[{}] {}".format(record.levelname, record.msg)
+            record.msg = self.__col(record.msg, **self.levelstyles.get(record.levelname, {}))
             return logging.Formatter.format(self, record)
 
     funcs = []
@@ -67,7 +67,6 @@ class Cli:
         self._createParser()
         if mode == "standalone":
             argcomplete.autocomplete(self.parser)
-            self._standalone(kwargs)
         import sys
         self.mode = mode
         self.stdout = kwargs.get("stdout", sys.stdout)
@@ -75,15 +74,8 @@ class Cli:
         self.host = kwargs.get("host")
         self.completer = kwargs.get("completer")
         self.__completing = True
-        self.col = lambda text, *args, **kwargs: text
-        self.colored = False
-        try:
-            import termcolor
-            if kwargs.get("color", False) or self.stdout.isatty():
-                self.col = lambda *args, **kwargs: termcolor.colored(*args, **kwargs)
-                self.colored = True
-        except Exception:
-            pass
+        self.colored = self.detectcolor(self.stdout, kwargs.get("color"))
+        self.col = self.colorfunc(self.colored)
         self.fs = None
         if "fs" in kwargs and isinstance(kwargs["fs"], dict):
             self.fs = kwargs["fs"]
@@ -91,6 +83,8 @@ class Cli:
             for file, content in self.fs.items():
                 self.fs[file] = dict(mode="r",
                                      stream=(io.BytesIO if isinstance(content, bytes) else io.StringIO)(content))
+        if mode == "standalone":
+            self.initLogging(self.stdout, color=self.colored)
 
     def execute(self, args=None, secure=True):
         """Execute commands as specified by args.
@@ -162,12 +156,42 @@ class Cli:
             return func
         return inner
 
-    def _standalone(self, params):
+    @staticmethod
+    def colorfunc(col):
+        if col:
+            import termcolor
+            return termcolor.colored
+        else:
+            return lambda text, *args, **kwargs: text
+
+    @staticmethod
+    def detectcolor(stdout, preset=None):
+        try:
+            import termcolor
+            if preset is not None:
+                return preset
+            return stdout.isatty()
+        except Exception:
+            return False
+
+    @staticmethod
+    def initLogging(stdout=None, color=None):
         """Initialize stand-alone mode."""
-        import tools.config
+        if stdout is None:
+            import sys
+            stdout = sys.stdout
+        color = Cli.detectcolor(stdout, color)
+        fmt = "(%(name)s) %(message)s"
+        if not color:
+            fmt = "[%(levelname)s] "+fmt
         handler = logging.StreamHandler()
-        handler.setFormatter(self.Formatter("%(message)s", self))
+        handler.setFormatter(Cli.Formatter(fmt, Cli.colorfunc(color)))
         logging.root.handlers = [handler]
+        from tools.config import initLoggers
+        try:
+            initLoggers()
+        except Exception as err:
+            logging.getLogger("config").error("Failed to initialize loggers: "+" - ".join(str(arg) for arg in err.args))
 
     def _createParser(self):
         """Create parser from registered functions."""

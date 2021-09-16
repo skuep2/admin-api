@@ -3,12 +3,15 @@
 # SPDX-FileCopyrightText: 2020 grommunio GmbH
 
 from flask import request
+import logging
 import time
 import jwt
 
 from services import Service
 from tools.config import Config
 
+
+logger = logging.getLogger("security")
 _priFile = Config["security"]["jwtPrivateKeyFile"]
 _pubFile = Config["security"]["jwtPublicKeyFile"]
 try:
@@ -18,7 +21,7 @@ try:
         jwtPubkey = file.read()
 except Exception:
     import logging
-    logging.error("Could not load JWT RSA keys ('{}', '{}'), authentication will not work".format(_priFile, _pubFile))
+    logger.error("Could not load JWT RSA keys ('{}', '{}'), authentication will not work".format(_priFile, _pubFile))
     jwtPrivkey = jwtPubkey = None
 
 

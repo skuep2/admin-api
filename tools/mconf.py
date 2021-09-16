@@ -5,18 +5,19 @@
 Module containing admin Managed CONFigurations
 """
 
-import logging
-
 from .config import Config
 from .misc import setDirectoryOwner, setDirectoryPermission
 from services import Service
 
+import logging
+logger = logging.getLogger("mconf")
 
 LDAP = {}
 AUTHMGR = {}
 
 _ldapDepServices = ("gromox-http.service", "gromox-midb.service", "gromox-zcore.service", "gromox-delivery.service",
                     "gromox-delivery-queue.service", "gromox-imap.service", "gromox-pop3.service")
+
 
 def _loadConf(path):
     from multidict import MultiDict
@@ -215,9 +216,10 @@ def dumpAuthmgr(conf=None, file=None, reloadServices=False):
 def load():
     error = loadLdap()
     if error:
-        logging.warn("[MCONF] Could not load ldap config: "+error)
+        logger.warn("Could not load ldap config: "+error)
     error = loadAuthmgr()
     if error:
-        logging.warn("[MCONF] Could not load authmgr config: "+error)
+        logger.warn("Could not load authmgr config: "+error)
+
 
 load()
